@@ -1,8 +1,0 @@
-{
-  "mcpServers": {
-    "whatsapp": {
-      "command": "node",
-      "args": ["C:/Users/hes/claude-whatsapp-notify/channel.js"]
-    }
-  }
-}

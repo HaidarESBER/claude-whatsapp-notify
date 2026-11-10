@@ -1,3 +1,9 @@
 #!/bin/sh
-# Claude Code with the WhatsApp channel (C:\Users\hes\claude-whatsapp-notify)
-exec claude --mcp-config "C:/Users/hes/claude-whatsapp-notify/mcp.json" --dangerously-load-development-channels server:whatsapp --chrome --add-dir "C:/Users/hes/claude-whatsapp-notify/uploads" "$@"
+# Claude Code with the WhatsApp channel. Location-independent: see claude-wa.js
+# (resolves symlinks so it also works when copied or linked onto your PATH)
+SELF="$0"
+while [ -L "$SELF" ]; do
+  LINK="$(readlink "$SELF")"
+  case "$LINK" in /*) SELF="$LINK" ;; *) SELF="$(dirname "$SELF")/$LINK" ;; esac
+done
+exec node "$(cd "$(dirname "$SELF")" && pwd)/claude-wa.js" "$@"

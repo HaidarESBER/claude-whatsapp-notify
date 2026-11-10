@@ -33,11 +33,11 @@ WhatsApp ⇄ server.js (Baileys + local HTTP API on 127.0.0.1:3737)
 | `hook.js` | Forwards Claude Code hook events to the server; exits silently if it isn't running |
 | `channel.js` | [Claude Code channel](https://code.claude.com/docs/en/channels-reference) that pipes WhatsApp messages into a live session and relays permission prompts |
 | `transcribe.js` | Local voice-note transcription (ffmpeg + Whisper via transformers.js) |
-| `mcp.json`, `bin/claude-wa*` | Launch Claude Code with the WhatsApp channel |
+| `bin/claude-wa*` | Launch Claude Code with the WhatsApp channel (paths are derived from the install location) |
 
 ## Setup
 
-Requires Node.js 18+ and Claude Code. Paths in `mcp.json` and `bin/` assume the project lives in `C:\Users\hes\claude-whatsapp-notify` — adjust them if not.
+Requires Node.js 18+ and Claude Code. Clone the repo anywhere; below, `<install-dir>` is wherever you cloned it. If the `claude` binary isn't on your `PATH` (or in `~/.local/bin`), set `CLAUDE_EXE` to its full path.
 
 1. **Install and start the server**
    ```
@@ -49,13 +49,13 @@ Requires Node.js 18+ and Claude Code. Paths in `mcp.json` and `bin/` assume the 
 2. **Add the hooks** to `~/.claude/settings.json`:
    ```json
    "hooks": {
-     "Notification": [{ "hooks": [{ "type": "command", "command": "node \"C:/Users/hes/claude-whatsapp-notify/hook.js\" notification", "timeout": 15 }] }],
-     "Stop": [{ "hooks": [{ "type": "command", "command": "node \"C:/Users/hes/claude-whatsapp-notify/hook.js\" stop", "timeout": 15 }] }],
-     "PermissionRequest": [{ "hooks": [{ "type": "command", "command": "node \"C:/Users/hes/claude-whatsapp-notify/hook.js\" permission", "timeout": 600 }] }]
+     "Notification": [{ "hooks": [{ "type": "command", "command": "node \"<install-dir>/hook.js\" notification", "timeout": 15 }] }],
+     "Stop": [{ "hooks": [{ "type": "command", "command": "node \"<install-dir>/hook.js\" stop", "timeout": 15 }] }],
+     "PermissionRequest": [{ "hooks": [{ "type": "command", "command": "node \"<install-dir>/hook.js\" permission", "timeout": 600 }] }]
    }
    ```
 
-3. **Live sessions (optional)** — copy `bin/claude-wa.cmd` (and `bin/claude-wa` for Git Bash) somewhere on your `PATH`, then start Claude Code with `claude-wa`. Choose *"I am using this for local development"* at the channel warning. To avoid a prompt for every reply, add `mcp__whatsapp__reply` to your allowed tools via `/permissions`.
+3. **Live sessions (optional)** — add `<install-dir>/bin` to your `PATH` (don't copy the scripts out of it; they locate the project relative to themselves), then start Claude Code with `claude-wa` (`claude-wa.cmd` on Windows, `bin/claude-wa` on macOS/Linux/Git Bash). Choose *"I am using this for local development"* at the channel warning. To avoid a prompt for every reply, add `mcp__whatsapp__reply` to your allowed tools via `/permissions`.
 
 ## WhatsApp commands
 

@@ -29,7 +29,7 @@ const HELP_TEXT =
   `*switch <number>* — talk to that window; *switch bg* for background runs\n\n` +
   `*Background runs* (when no window is selected)\n` +
   `*new* — start a fresh conversation\n` +
-  `*cd <folder>* — choose the project folder (e.g. cd C:\\Users\\hes\\whatsapp-prayer-bot)\n` +
+  `*cd <folder>* — choose the project folder (e.g. cd ~/projects/my-app)\n` +
   `*where* — show the current folder\n` +
   `*stop* — cancel the prompt Claude is working on\n\n` +
   `*Chat*\n` +
@@ -59,7 +59,7 @@ const DEFAULT_CONFIG = {
 // web search, no settings/hooks/MCP, an empty folder outside the user's home,
 // and its own conversation — so nothing they send can run anything on this PC
 // or see the owner's sessions.
-const GUEST_DIR = path.join(process.env.PUBLIC || 'C:\\Users\\Public', 'claude-guest');
+const GUEST_DIR = path.join(process.env.PUBLIC || (process.platform === 'win32' ? 'C:\\Users\\Public' : '/tmp'), 'claude-guest');
 const GUEST_SYSTEM_PROMPT =
   'You are a friendly assistant answering questions in a WhatsApp group chat. Each message starts with the ' +
   'sender\'s name in brackets. You can search the web. You cannot access, run or change anything on any ' +
