@@ -1,8 +1,24 @@
-# claude-whatsapp-notify
+<h1 align="center">claude-whatsapp-notify</h1>
 
-Control [Claude Code](https://claude.com/claude-code) from WhatsApp: get notified when Claude needs you, approve or deny commands from your phone, send prompts (text, images, files, voice notes) straight into your open Claude Code sessions, and let friends in a group chat ask questions without being able to run anything on your PC.
+<p align="center">
+  <b>Control <a href="https://claude.com/claude-code">Claude Code</a> from WhatsApp.</b><br>
+  Approve commands, send prompts and voice notes, and chat with your open sessions from your phone.
+</p>
 
-Everything runs locally on your machine. The only outside connections are WhatsApp (via [Baileys](https://github.com/WhiskeySockets/Baileys)) and Anthropic (via Claude Code).
+<p align="center">
+  <img alt="Node.js 18+" src="https://img.shields.io/badge/node-%E2%89%A518-339933?logo=node.js&logoColor=white">
+  <img alt="License: ISC" src="https://img.shields.io/badge/license-ISC-blue">
+  <img alt="Platform" src="https://img.shields.io/badge/platform-Windows%20%7C%20macOS%20%7C%20Linux-lightgrey">
+  <img alt="Local first" src="https://img.shields.io/badge/runs-100%25%20local-6366f1">
+</p>
+
+<p align="center">
+  <img src="docs/chat-mockup.svg" alt="Illustrative WhatsApp conversation: an approval request, a voice note and a guest question" width="300">
+</p>
+
+Get notified when Claude needs you, approve or deny commands from your phone, send prompts (text, images, files, voice notes) straight into your open Claude Code sessions, and let friends in a group chat ask questions without being able to run anything on your PC.
+
+Everything runs locally on your machine. The outside connections are WhatsApp (via [Baileys](https://github.com/WhiskeySockets/Baileys)), Anthropic (via Claude Code) and a one-time Whisper model download from Hugging Face.
 
 > ⚠️ Baileys is an **unofficial** WhatsApp client. WhatsApp's terms don't allow unofficial clients, so use a secondary number for the bot — it could get banned.
 
@@ -19,13 +35,15 @@ Everything runs locally on your machine. The only outside connections are WhatsA
 
 ## How it works
 
-```
-WhatsApp ⇄ server.js (Baileys + local HTTP API on 127.0.0.1:3737)
-              ├── hook.js     ← Claude Code hooks (Notification, Stop, PermissionRequest)
-              ├── channel.js  ← MCP channel inside each live `claude-wa` session
-              ├── claude -p   ← background runs for the owner
-              └── claude -p --restricted --tools WebSearch  ← guests
-```
+<p align="center">
+  <img src="docs/architecture.svg" alt="Architecture: phone, WhatsApp, server.js, hook.js, channel.js, owner and guest Claude runs" width="900">
+</p>
+
+### Approval flow
+
+<p align="center">
+  <img src="docs/approval-flow.svg" alt="Sequence diagram of a remote approval: Claude Code, hook.js, server.js, you" width="900">
+</p>
 
 | File | Role |
 |---|---|
@@ -78,3 +96,17 @@ Requires Node.js 18+ and Claude Code. Clone the repo anywhere; below, `<install-
 - Group messages that don't @mention or reply to the bot are dropped locally and never sent to Claude.
 - The local API only listens on `127.0.0.1`.
 - Not committed: `auth/` (WhatsApp login), `config.json` (linked numbers, settings), `uploads/` (received files).
+
+### Known limitations
+
+Read these before relying on it. This is a personal tool and hasn't had an external security audit.
+
+- **The local API has no authentication.** Any process on your PC (or a web page that can reach `localhost:3737`) can send you messages or register as a session. Don't use it on a shared machine.
+- **Approval previews are truncated** to 1,500 characters. A very long command can hide its tail, so deny anything that looks cut off.
+- **In group mode, everything goes to the group.** Approval prompts, replies and "finished" summaries are visible to every member. Guests can't approve anything, but they can read it.
+- **Pairing code** has no attempt limit or expiry; only start the server when you're about to pair.
+- **Guest isolation** relies on the Claude Code flags in `server.js` (`--restricted`, `--tools WebSearch`, empty settings). Check them against your Claude Code version.
+
+## License
+
+[ISC](LICENSE) © Haidar Esber

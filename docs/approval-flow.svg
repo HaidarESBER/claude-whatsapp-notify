@@ -1,0 +1,42 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 960 470" font-family="-apple-system,Segoe UI,Helvetica,Arial,sans-serif">
+  <title>Remote approval sequence</title>
+  <defs>
+    <marker id="a" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse">
+      <path d="M0 0L10 5L0 10z" fill="#475569"/>
+    </marker>
+  </defs>
+  <rect width="960" height="470" rx="14" fill="#f8fafc" stroke="#e2e8f0"/>
+  <text x="480" y="34" text-anchor="middle" font-size="20" font-weight="700" fill="#0f172a">Remote approval flow</text>
+
+  <!-- participants -->
+  <g font-size="13" font-weight="700" text-anchor="middle">
+    <rect x="40" y="55" width="150" height="38" rx="8" fill="#e0e7ff" stroke="#6366f1"/><text x="115" y="79" fill="#312e81">Claude Code</text>
+    <rect x="280" y="55" width="150" height="38" rx="8" fill="#e0e7ff" stroke="#6366f1"/><text x="355" y="79" fill="#312e81">hook.js</text>
+    <rect x="520" y="55" width="150" height="38" rx="8" fill="#e0e7ff" stroke="#6366f1"/><text x="595" y="79" fill="#312e81">server.js</text>
+    <rect x="760" y="55" width="150" height="38" rx="8" fill="#dcfce7" stroke="#16a34a"/><text x="835" y="79" fill="#14532d">You (WhatsApp)</text>
+  </g>
+  <g stroke="#cbd5e1" stroke-dasharray="4 4">
+    <line x1="115" y1="93" x2="115" y2="440"/>
+    <line x1="355" y1="93" x2="355" y2="440"/>
+    <line x1="595" y1="93" x2="595" y2="440"/>
+    <line x1="835" y1="93" x2="835" y2="440"/>
+  </g>
+
+  <g stroke="#475569" stroke-width="2" fill="none" marker-end="url(#a)">
+    <line x1="115" y1="140" x2="353" y2="140"/>
+    <line x1="355" y1="190" x2="593" y2="190"/>
+    <line x1="595" y1="240" x2="833" y2="240"/>
+    <line x1="833" y1="290" x2="597" y2="290"/>
+    <line x1="593" y1="340" x2="357" y2="340"/>
+    <line x1="353" y1="390" x2="117" y2="390"/>
+  </g>
+  <g font-size="12" fill="#0f172a" text-anchor="middle">
+    <text x="235" y="130">1. wants to run a tool (PermissionRequest hook)</text>
+    <text x="475" y="180">2. POST /ask</text>
+    <text x="715" y="230">3. "#1 wants to run Bash: ..."</text>
+    <text x="715" y="280">4. you reply "y"</text>
+    <text x="475" y="330">5. answer: allow</text>
+    <text x="235" y="380">6. decision: allow / deny</text>
+  </g>
+  <text x="480" y="430" text-anchor="middle" font-size="12" fill="#64748b">No answer within the timeout (or server down): hook prints nothing and the normal terminal prompt appears.</text>
+</svg>
