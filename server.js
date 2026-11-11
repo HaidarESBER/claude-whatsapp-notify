@@ -14,10 +14,11 @@ const os = require('os');
 const path = require('path');
 const { spawn } = require('child_process');
 const { transcribe } = require('./transcribe');
+const { createPairing } = require('./pairing');
 
 const PORT = Number(process.env.CLAUDE_WA_PORT) || 3737;
-const CONFIG_PATH = path.join(__dirname, 'config.json');
-const TOKEN_PATH = path.join(__dirname, '.api-token');
+const CONFIG_PATH = process.env.CLAUDE_WA_CONFIG || path.join(__dirname, 'config.json');
+const TOKEN_PATH = process.env.CLAUDE_WA_TOKEN_FILE || path.join(__dirname, '.api-token');
 
 // Every request to the local API must carry this secret (hook.js and channel.js read it
 // from the same file). Without it, any local process or web page could talk to the API.
@@ -111,32 +112,15 @@ function saveConfig() {
 // Whoever sends "link <code>" to this account first becomes the owner. The
 // code is printed only in this console, so random people messaging the
 // number can't claim it.
-// The code expires after 10 minutes and rotates after 5 wrong guesses.
-const PAIRING_TTL_MS = 10 * 60 * 1000;
-const MAX_PAIRING_FAILURES = 5;
-const newPairingCode = () => String(crypto.randomInt(100000, 1000000));
-let pairingCode = newPairingCode();
-let pairingIssuedAt = Date.now();
-let pairingFailures = 0;
+// The code expires after 10 minutes and rotates after 5 wrong guesses (see pairing.js)
+const pairing = createPairing({
+  onRotate: (code, reason) =>
+    console.log(`
+Pairing code ${reason}. To link your phone, send this WhatsApp message to this account:
 
-function rotatePairingCode(reason) {
-  pairingCode = newPairingCode();
-  pairingIssuedAt = Date.now();
-  pairingFailures = 0;
-  console.log(`\nPairing code ${reason}. To link your phone, send this WhatsApp message to this account:\n\n    link ${pairingCode}\n`);
-}
-
-// True only for the right, unexpired code; compared in constant time
-function tryPair(text) {
-  if (Date.now() - pairingIssuedAt > PAIRING_TTL_MS) rotatePairingCode('expired');
-  const m = text.trim().match(/^link\s+(\d{6})$/i);
-  if (!m) return false;
-  const a = Buffer.from(m[1]);
-  const b = Buffer.from(pairingCode);
-  if (a.length === b.length && crypto.timingSafeEqual(a, b)) return true;
-  if (++pairingFailures >= MAX_PAIRING_FAILURES) rotatePairingCode('rotated after too many wrong attempts');
-  return false;
-}
+    link ${code}
+`),
+});
 
 let sock = null;
 let connected = false;
@@ -577,9 +561,8 @@ async function startBot() {
       myIds = [userPart(sock.user?.phoneNumber || sock.user?.id), userPart(sock.user?.lid)].filter(Boolean);
       console.log('Connected to WhatsApp.');
       if (!config.ownerJids.length) {
-        pairingIssuedAt = Date.now(); // the 10 minutes start once the account is connected
-        pairingFailures = 0;
-        console.log(`\nTo link your phone, send this WhatsApp message to this account:\n\n    link ${pairingCode}\n`);
+        pairing.restartTimer(); // the 10 minutes start once the account is connected
+        console.log(`\nTo link your phone, send this WhatsApp message to this account:\n\n    link ${pairing.code}\n`);
       } else {
         console.log(`Linked to ${config.ownerJids[0]} — mode: ${config.away ? 'away' : 'at PC'}`);
       }
@@ -604,7 +587,7 @@ async function startBot() {
 
       try {
         if (!config.ownerJids.length) {
-          if (!isGroup && tryPair(text)) {
+          if (!isGroup && pairing.tryPair(text)) {
             // remoteJidAlt is the same chat in the other format (LID vs phone number)
             config.ownerJids = [chatId, msg.key.remoteJidAlt].filter(Boolean);
             saveConfig();

@@ -6,6 +6,7 @@
 </p>
 
 <p align="center">
+  <a href="https://github.com/HaidarESBER/claude-whatsapp-notify/actions/workflows/ci.yml"><img alt="CI" src="https://github.com/HaidarESBER/claude-whatsapp-notify/actions/workflows/ci.yml/badge.svg"></a>
   <img alt="Node.js 18+" src="https://img.shields.io/badge/node-%E2%89%A518-339933?logo=node.js&logoColor=white">
   <img alt="License: ISC" src="https://img.shields.io/badge/license-ISC-blue">
   <img alt="Platform" src="https://img.shields.io/badge/platform-Windows%20%7C%20macOS%20%7C%20Linux-lightgrey">
@@ -118,6 +119,20 @@ This is a personal tool and hasn't had an external security audit.
 - **Approval previews show the tool's target, not everything.** For a file write you see the path, not the file's contents.
 - **Guest isolation** relies on the Claude Code flags in `server.js` (`--restricted`, `--tools WebSearch`, empty settings). Check them against your Claude Code version.
 - **Baileys is unofficial.** WhatsApp can ban the number you use for the bot.
+
+## Tests
+
+```
+npm test
+```
+
+29 tests run on Node's built-in test runner, with no WhatsApp account needed. They start the real notifier in a temporary directory and check:
+
+- **The local API:** 401 without or with a wrong token, 403 for a foreign `Host` header, 415 for browser-style requests, and the over-long approval rules.
+- **`hook.js`:** it sends the bearer token, flags commands over 3,000 characters as truncated, turns the notifier's answer into allow or deny, and stays quiet when the notifier is down.
+- **Pairing:** the code expires, rotates after 5 wrong guesses, and rejects malformed input.
+
+CI runs them on Node 20 and 22.
 
 ## License
 

@@ -14,7 +14,7 @@ const path = require('path');
 // The notifier writes a secret here on first start; every API request must send it
 function apiToken() {
   try {
-    return fs.readFileSync(path.join(__dirname, '.api-token'), 'utf8').trim();
+    return fs.readFileSync(process.env.CLAUDE_WA_TOKEN_FILE || path.join(__dirname, '.api-token'), 'utf8').trim();
   } catch {
     return '';
   }
