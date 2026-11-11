@@ -15,11 +15,20 @@ function readStdin() {
   }
 }
 
+// The notifier writes a secret here on first start; every API request must send it
+function apiToken() {
+  try {
+    return fs.readFileSync(path.join(__dirname, '.api-token'), 'utf8').trim();
+  } catch {
+    return '';
+  }
+}
+
 async function post(route, body, timeoutMs) {
   try {
     const res = await fetch(`http://127.0.0.1:${PORT}${route}`, {
       method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
+      headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${apiToken()}` },
       body: JSON.stringify(body),
       signal: AbortSignal.timeout(timeoutMs),
     });
@@ -50,11 +59,18 @@ function lastAssistantText(transcriptPath) {
   return '';
 }
 
+// Longest request shown for approval. A longer one is flagged instead of silently cut off,
+// because what's hidden at the end could be the dangerous part.
+const MAX_PREVIEW = 3000;
+
 function describeTool(name, input = {}) {
-  if (input.command) return `${name}: \`${truncate(input.command, 1500)}\``;
-  if (input.file_path) return `${name}: ${input.file_path}`;
-  if (input.url) return `${name}: ${input.url}`;
-  return `${name}: ${truncate(JSON.stringify(input), 1500)}`;
+  let body;
+  if (input.command) body = `${name}: \`${input.command}\``;
+  else if (input.file_path) body = `${name}: ${input.file_path}`;
+  else if (input.url) body = `${name}: ${input.url}`;
+  else body = `${name}: ${JSON.stringify(input)}`;
+  const tooLong = body.length > MAX_PREVIEW;
+  return { text: tooLong ? body.slice(0, MAX_PREVIEW) : body, tooLong };
 }
 
 // Set by server.js for prompts sent from WhatsApp: the server sends the reply
@@ -83,8 +99,10 @@ async function main() {
       cwd: input.cwd,
     }, 10000);
   } else if (event === 'permission') {
+    const tool = describeTool(input.tool_name, input.tool_input);
     const res = await post('/ask', {
-      text: `*${project}* wants to run\n${describeTool(input.tool_name, input.tool_input)}`,
+      text: `*${project}* wants to run\n${tool.text}`,
+      truncated: tool.tooLong,
       timeoutMs: 540000,
       force: fromWhatsApp,
       cwd: input.cwd,

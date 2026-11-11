@@ -17,6 +17,31 @@ const { transcribe } = require('./transcribe');
 
 const PORT = Number(process.env.CLAUDE_WA_PORT) || 3737;
 const CONFIG_PATH = path.join(__dirname, 'config.json');
+const TOKEN_PATH = path.join(__dirname, '.api-token');
+
+// Every request to the local API must carry this secret (hook.js and channel.js read it
+// from the same file). Without it, any local process or web page could talk to the API.
+function loadApiToken() {
+  try {
+    const t = fs.readFileSync(TOKEN_PATH, 'utf8').trim();
+    if (/^[0-9a-f]{64}$/.test(t)) return t;
+  } catch {}
+  const t = crypto.randomBytes(32).toString('hex');
+  fs.writeFileSync(TOKEN_PATH, t, { mode: 0o600 });
+  return t;
+}
+const API_TOKEN = loadApiToken();
+const ALLOWED_HOSTS = new Set([`127.0.0.1:${PORT}`, `localhost:${PORT}`]); // blocks DNS rebinding
+
+function authorized(req) {
+  const m = /^Bearer ([0-9a-f]{64})$/.exec(req.headers.authorization || '');
+  if (!m) return false;
+  const a = Buffer.from(m[1]);
+  const b = Buffer.from(API_TOKEN);
+  return a.length === b.length && crypto.timingSafeEqual(a, b);
+}
+
+const MAX_PREVIEW = 3000; // longest tool request shown for approval; longer ones must be approved in the terminal
 const AUTH_DIR = path.join(__dirname, 'auth');
 const CLAUDE_EXE = process.env.CLAUDE_EXE || path.join(os.homedir(), '.local', 'bin', 'claude.exe');
 const MAX_CHUNK = 4000; // characters per WhatsApp message when splitting long replies
@@ -86,7 +111,32 @@ function saveConfig() {
 // Whoever sends "link <code>" to this account first becomes the owner. The
 // code is printed only in this console, so random people messaging the
 // number can't claim it.
-const pairingCode = String(crypto.randomInt(100000, 1000000));
+// The code expires after 10 minutes and rotates after 5 wrong guesses.
+const PAIRING_TTL_MS = 10 * 60 * 1000;
+const MAX_PAIRING_FAILURES = 5;
+const newPairingCode = () => String(crypto.randomInt(100000, 1000000));
+let pairingCode = newPairingCode();
+let pairingIssuedAt = Date.now();
+let pairingFailures = 0;
+
+function rotatePairingCode(reason) {
+  pairingCode = newPairingCode();
+  pairingIssuedAt = Date.now();
+  pairingFailures = 0;
+  console.log(`\nPairing code ${reason}. To link your phone, send this WhatsApp message to this account:\n\n    link ${pairingCode}\n`);
+}
+
+// True only for the right, unexpired code; compared in constant time
+function tryPair(text) {
+  if (Date.now() - pairingIssuedAt > PAIRING_TTL_MS) rotatePairingCode('expired');
+  const m = text.trim().match(/^link\s+(\d{6})$/i);
+  if (!m) return false;
+  const a = Buffer.from(m[1]);
+  const b = Buffer.from(pairingCode);
+  if (a.length === b.length && crypto.timingSafeEqual(a, b)) return true;
+  if (++pairingFailures >= MAX_PAIRING_FAILURES) rotatePairingCode('rotated after too many wrong attempts');
+  return false;
+}
 
 let sock = null;
 let connected = false;
@@ -275,13 +325,14 @@ const VOICE_LANGUAGES = { en: 'english', fr: 'french', ar: 'arabic' };
 
 // Turns a voice message into text (transcribed locally) so Claude can read it.
 // Echoes the transcript back so the sender can see what was understood.
-async function voiceToText(msg, media) {
+// `untrusted` is for guests' voice notes: ffmpeg gets a stricter, stdin-only input
+async function voiceToText(msg, media, untrusted = false) {
   const chatId = msg.key.remoteJid;
   const file = await saveMedia(msg, media);
   if (!file) return null;
   sock.sendMessage(chatId, { react: { text: '🎙️', key: msg.key } }).catch(() => {});
   try {
-    const transcript = await transcribe(file, VOICE_LANGUAGES[config.voiceLanguage] || 'english');
+    const transcript = await transcribe(file, VOICE_LANGUAGES[config.voiceLanguage] || 'english', { untrusted });
     if (!transcript) return null;
     await sendInChat(chatId, `🎙️ _${transcript}_`, msg);
     return transcript;
@@ -313,6 +364,7 @@ async function saveMedia(msg, media) {
   if (media.size > MAX_MEDIA_BYTES) return null;
   try {
     const buffer = await downloadMediaMessage(msg, 'buffer', {}, { reuploadRequest: sock.updateMediaMessage });
+    if (buffer.length > MAX_MEDIA_BYTES) return null; // media.size is whatever the sender claimed, so check the real size too
     fs.mkdirSync(UPLOADS_DIR, { recursive: true });
     const ext = path.extname(media.fileName).slice(1) || MIME_EXT[media.mimetype.split(';')[0]] || 'bin';
     const stamp = new Date().toISOString().replace(/[:.]/g, '-');
@@ -450,6 +502,10 @@ async function handleOwnerMessage(text, msg) {
 
   const match = lower.match(/^(y|yes|ok|oui|allow|n|no|non|deny)(?:\s+#?(\d+))?$/);
   if (match) {
+    // With several requests waiting, a bare "y" could approve one that arrived a second ago
+    if (!match[2] && pending.length > 1) {
+      return sendToOwner(`${pending.length} requests are waiting (${pending.map((p) => `#${p.id}`).join(', ')}). Reply *y <number>* or *n <number>* so you approve the right one.`);
+    }
     const entry = match[2] ? pending.find((p) => p.id === Number(match[2])) : pending[0];
     if (!entry) return sendToOwner(match[2] ? `No pending request #${match[2]}.` : 'Nothing is waiting for approval.');
     const allow = ['y', 'yes', 'ok', 'oui', 'allow'].includes(match[1]);
@@ -521,6 +577,8 @@ async function startBot() {
       myIds = [userPart(sock.user?.phoneNumber || sock.user?.id), userPart(sock.user?.lid)].filter(Boolean);
       console.log('Connected to WhatsApp.');
       if (!config.ownerJids.length) {
+        pairingIssuedAt = Date.now(); // the 10 minutes start once the account is connected
+        pairingFailures = 0;
         console.log(`\nTo link your phone, send this WhatsApp message to this account:\n\n    link ${pairingCode}\n`);
       } else {
         console.log(`Linked to ${config.ownerJids[0]} — mode: ${config.away ? 'away' : 'at PC'}`);
@@ -546,7 +604,7 @@ async function startBot() {
 
       try {
         if (!config.ownerJids.length) {
-          if (!isGroup && text.toLowerCase() === `link ${pairingCode}`) {
+          if (!isGroup && tryPair(text)) {
             // remoteJidAlt is the same chat in the other format (LID vs phone number)
             config.ownerJids = [chatId, msg.key.remoteJidAlt].filter(Boolean);
             saveConfig();
@@ -564,7 +622,7 @@ async function startBot() {
             if (chatId === config.groupJid) {
               // A guest's voice note counts when it's a reply to the bot (you can't @mention in audio)
               if (media?.kind === 'voice' && config.guestsEnabled && addressedText(msg, '') !== null && !guestJob) {
-                const transcript = await voiceToText(msg, media);
+                const transcript = await voiceToText(msg, media, true);
                 if (transcript) await handleGuestMessage(msg, transcript, true);
               } else {
                 await handleGuestMessage(msg, text);
@@ -628,7 +686,13 @@ async function startBot() {
 function readBody(req) {
   return new Promise((resolve) => {
     let data = '';
-    req.on('data', (chunk) => (data += chunk));
+    req.on('data', (chunk) => {
+      data += chunk;
+      if (data.length > 1_000_000) {
+        req.destroy(); // no legitimate request is this big
+        resolve({});
+      }
+    });
     req.on('end', () => {
       try {
         resolve(JSON.parse(data || '{}'));
@@ -646,6 +710,13 @@ function reply(res, status, body) {
 
 const server = http.createServer(async (req, res) => {
   try {
+    if (!ALLOWED_HOSTS.has(req.headers.host)) return reply(res, 403, { error: 'bad host' });
+    if (!authorized(req)) return reply(res, 401, { error: 'unauthorized' });
+    // Browsers can't send application/json cross-origin without a preflight, so this also blocks web pages
+    if (req.method === 'POST' && !/^application\/json\b/i.test(req.headers['content-type'] || '')) {
+      return reply(res, 415, { error: 'content-type must be application/json' });
+    }
+
     if (req.method === 'GET' && req.url === '/status') {
       return reply(res, 200, { connected, linked: config.ownerJids.length > 0, away: config.away });
     }
@@ -694,6 +765,12 @@ const server = http.createServer(async (req, res) => {
       const { id, request_id, tool_name, description, input_preview } = await readBody(req);
       const s = sessions.get(id);
       if (!s) return reply(res, 404, { error: 'unknown session' });
+      const preview = String(input_preview ?? '');
+      if (preview.length > MAX_PREVIEW) {
+        // Showing only the start of a long request could hide what's at the end, so don't offer it here
+        await sendToOwner(`⚠️ *${sessionLabel(s)}* wants to use *${tool_name}*, but the request is too long to review here (${preview.length} characters). Approve or deny it in the terminal.`);
+        return reply(res, 200, { ok: true, reason: 'too-long' });
+      }
       const askId = nextAskId++;
       const entry = {
         id: askId,
@@ -704,7 +781,7 @@ const server = http.createServer(async (req, res) => {
       pending.push(entry);
       await sendToOwner(
         `🔐 *#${askId}* *${sessionLabel(s)}* wants to use *${tool_name}*\n${description}\n` +
-        `\`\`\`${input_preview.slice(0, 1500)}\`\`\`\n\nReply *y* to allow or *n* to deny.`,
+        `\`\`\`${preview.replaceAll('```', "'''")}\`\`\`\n\nReply *y* to allow or *n* to deny.`,
       );
       return reply(res, 200, { ok: true });
     }
@@ -719,9 +796,15 @@ const server = http.createServer(async (req, res) => {
     }
 
     if (req.method === 'POST' && req.url === '/ask') {
-      const { text, timeoutMs = 540000, force, cwd } = await readBody(req);
+      const { text, timeoutMs = 540000, force, cwd, truncated } = await readBody(req);
       if (!config.away && !force) return reply(res, 200, { answer: null, reason: 'not-away' });
       if (hasLiveSession(cwd)) return reply(res, 200, { answer: null, reason: 'channel-relays-it' });
+      if (truncated) {
+        // hook.js cut the request short, so what's hidden could be anything: never approve it from here.
+        // WhatsApp-started runs have no terminal to fall back to, so those are denied outright.
+        sendToOwner(`⚠️ A request was too long to review here, so it ${force ? 'was denied' : 'must be answered in the terminal'}:\n\n${String(text).slice(0, 500)}…`).catch(() => {});
+        return reply(res, 200, { answer: force ? 'deny' : null, reason: 'too-long' });
+      }
 
       const id = nextAskId++;
       const answer = await new Promise((resolve) => {
@@ -745,4 +828,17 @@ const server = http.createServer(async (req, res) => {
 // Bound to localhost only — nothing outside this PC can trigger messages
 server.listen(PORT, '127.0.0.1', () => console.log(`Notifier listening on http://127.0.0.1:${PORT}`));
 
-startBot();
+// Received files are only needed while Claude reads them, so don't keep them forever
+function cleanupUploads(maxAgeMs = 7 * 24 * 3600 * 1000) {
+  try {
+    for (const f of fs.readdirSync(UPLOADS_DIR)) {
+      const p = path.join(UPLOADS_DIR, f);
+      if (Date.now() - fs.statSync(p).mtimeMs > maxAgeMs) fs.unlinkSync(p);
+    }
+  } catch {}
+}
+cleanupUploads();
+setInterval(cleanupUploads, 6 * 3600 * 1000).unref();
+
+// CLAUDE_WA_NO_BOT=1 starts only the local API (used to test its authentication)
+if (!process.env.CLAUDE_WA_NO_BOT) startBot();

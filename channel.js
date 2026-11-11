@@ -8,6 +8,17 @@ const { StdioServerTransport } = require('@modelcontextprotocol/sdk/server/stdio
 const { ListToolsRequestSchema, CallToolRequestSchema } = require('@modelcontextprotocol/sdk/types.js');
 const { z } = require('zod');
 const http = require('http');
+const fs = require('fs');
+const path = require('path');
+
+// The notifier writes a secret here on first start; every API request must send it
+function apiToken() {
+  try {
+    return fs.readFileSync(path.join(__dirname, '.api-token'), 'utf8').trim();
+  } catch {
+    return '';
+  }
+}
 
 const PORT = Number(process.env.CLAUDE_WA_PORT) || 3737;
 
@@ -33,7 +44,10 @@ function post(route, body) {
   return new Promise((resolve, reject) => {
     const data = JSON.stringify(body);
     const req = http.request(
-      { host: '127.0.0.1', port: PORT, path: route, method: 'POST', headers: { 'Content-Type': 'application/json' } },
+      {
+        host: '127.0.0.1', port: PORT, path: route, method: 'POST',
+        headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${apiToken()}` },
+      },
       (res) => {
         let out = '';
         res.on('data', (d) => (out += d));
@@ -109,7 +123,14 @@ async function connect() {
     return setTimeout(connect, 5000);
   }
 
-  const req = http.get({ host: '127.0.0.1', port: PORT, path: `/channel/events?id=${sessionId}` }, (res) => {
+  const req = http.get({
+    host: '127.0.0.1', port: PORT, path: `/channel/events?id=${sessionId}`,
+    headers: { Authorization: `Bearer ${apiToken()}` },
+  }, (res) => {
+    if (res.statusCode !== 200) {
+      res.resume();
+      return setTimeout(connect, 5000); // not authorized yet, or the notifier restarted
+    }
     res.setEncoding('utf8');
     let buf = '';
     res.on('data', (chunk) => {

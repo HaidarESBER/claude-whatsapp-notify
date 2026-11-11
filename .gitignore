@@ -2,3 +2,6 @@ node_modules/
 auth/
 config.json
 uploads/
+
+# Local API secret (generated on first start)
+.api-token

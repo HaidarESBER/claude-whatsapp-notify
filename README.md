@@ -94,18 +94,30 @@ Requires Node.js 18+ and Claude Code. Clone the repo anywhere; below, `<install-
 - Only the linked owner can send prompts, approve tools, or use Claude in Chrome. Guest messages go to a Claude with no command, file or browser tools, running in an empty folder with no settings, hooks or MCP servers loaded.
 - Claude Code adds the account email to every session's context. Guests are instructed never to reveal personal details, but that's an instruction, not a hard guarantee.
 - Group messages that don't @mention or reply to the bot are dropped locally and never sent to Claude.
-- The local API only listens on `127.0.0.1`.
-- Not committed: `auth/` (WhatsApp login), `config.json` (linked numbers, settings), `uploads/` (received files).
+- Not committed: `auth/` (WhatsApp login), `config.json` (linked numbers, settings), `uploads/` (received files), `.api-token` (local API secret).
+
+### How the local API is protected
+
+The notifier's HTTP API listens on `127.0.0.1` only, and on top of that:
+
+- **Every request needs a secret.** On first start the server writes a random 256-bit token to `.api-token` (gitignored). `hook.js` and `channel.js` read it from there and send it as a bearer token. A request without it gets a `401`.
+- **Web pages can't reach it.** Requests must carry a `127.0.0.1` or `localhost` `Host` header (blocks DNS rebinding) and `Content-Type: application/json` (browsers can't send that cross-origin without a preflight).
+- **Pairing is rate limited.** The `link <code>` code expires after 10 minutes and rotates after 5 wrong guesses; it is compared in constant time.
+- **Approvals can't hide their tail.** A request longer than 3,000 characters is never offered for approval on WhatsApp: you're told to answer in the terminal, and runs started from WhatsApp (which have no terminal) are denied.
+- **`y` / `n` must name a request when several are waiting**, so you can't approve one that arrived a second ago by accident.
+- **Guest voice notes** are decoded by ffmpeg from stdin only, with just the `pipe` protocol allowed and a 2-minute cap. Received files are deleted after 7 days, and the real downloaded size is checked, not the size the sender claims.
+
+Restart the notifier (`npm start`) after updating so the API starts requiring the token.
 
 ### Known limitations
 
-Read these before relying on it. This is a personal tool and hasn't had an external security audit.
+This is a personal tool and hasn't had an external security audit.
 
-- **The local API has no authentication.** Any process on your PC (or a web page that can reach `localhost:3737`) can send you messages or register as a session. Don't use it on a shared machine.
-- **Approval previews are truncated** to 1,500 characters. A very long command can hide its tail, so deny anything that looks cut off.
+- **Anything running as you can read `.api-token`.** The token stops other users, web pages and sandboxed processes, but malware running under your account could read it too. Don't use this on a machine you don't trust.
 - **In group mode, everything goes to the group.** Approval prompts, replies and "finished" summaries are visible to every member. Guests can't approve anything, but they can read it.
-- **Pairing code** has no attempt limit or expiry; only start the server when you're about to pair.
+- **Approval previews show the tool's target, not everything.** For a file write you see the path, not the file's contents.
 - **Guest isolation** relies on the Claude Code flags in `server.js` (`--restricted`, `--tools WebSearch`, empty settings). Check them against your Claude Code version.
+- **Baileys is unofficial.** WhatsApp can ban the number you use for the bot.
 
 ## License
 
