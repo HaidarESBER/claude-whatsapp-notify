@@ -338,7 +338,8 @@ async function handleGuestMessage(msg, text, alreadyAddressed = false) {
   fs.mkdirSync(GUEST_DIR, { recursive: true });
   const args = [
     '-p', '--output-format', 'json',
-    '--restricted', '--tools', 'WebSearch',
+    // --tools makes WebSearch available; --allowedTools lets it run without a permission prompt nobody can answer
+    '--restricted', '--tools', 'WebSearch', '--allowedTools', 'WebSearch',
     '--strict-mcp-config', '--setting-sources', '', '--disable-slash-commands', '--no-chrome',
     '--system-prompt', GUEST_SYSTEM_PROMPT,
   ];
